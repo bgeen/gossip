@@ -1,0 +1,5 @@
+.DS_Store
+.env
+
+test.*
+openai_resp.json
