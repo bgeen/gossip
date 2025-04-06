@@ -1,4 +1,4 @@
-package providers
+package provider
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
+	"time"
 )
 
 const AnthropicEndpoint = "https://api.anthropic.com/v1/messages"
@@ -114,8 +116,8 @@ func (provider Anthropic) FormatMessages(messages []Message) []AnthropicMessage 
 }
 
 func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *AgentResult {
+	fmt.Printf("[%s] Provider anthropic called\n", time.Now().Format(time.RFC3339))
 	apiKey := provider.ApiKey
-
 	var finalPrompt []AnthropicMessage
 	if len(messageHistory) > 0 {
 		finalPrompt = provider.FormatMessages(messageHistory[0])
@@ -148,13 +150,25 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 		reqBody.Temperature = provider.Temperature
 	}
 
-	if len(provider.Tools) > 0 {
-		reqBody.Tools = provider.Tools
-	}
+	var tools []AnthropicTool
 
-	data, err := json.MarshalIndent(reqBody, "", "    ")
-	fmt.Println(string(data))
-	// return nil
+	if len(provider.ToolStore.functions) > 0 {
+		for fn, _ := range provider.ToolStore.functions {
+			fnName := fn
+			properties, required := ConvertToProperties(reflect.New(provider.ToolStore.paramTypes[fnName]).Interface())
+			tool := AnthropicTool{
+				Name:        fnName,
+				Description: provider.ToolStore.descriptions[fnName],
+				Parameters: Parameters{
+					Type:       "object",
+					Required:   required,
+					Properties: properties,
+				},
+			}
+			tools = append(tools, tool)
+		}
+		reqBody.Tools = tools
+	}
 
 	// Convert request body to JSON
 	jsonData, err := json.Marshal(reqBody)
@@ -187,18 +201,12 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 		log.Fatal(err)
 	}
 
-	fmt.Println("resp body: ", string(body))
-	// return nil
-
 	// Parse JSON response
 	var response AnthropicResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	data, _ = json.MarshalIndent(response, "", "    ")
-	fmt.Println("response data \n", string(data))
 
 	var allMessages []Message
 	var responseMessage Message
@@ -239,6 +247,17 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 		}
 	}
 
+	if toolIntent.Id != "" {
+		toolResult, err := provider.ExecuteToolIntent(toolIntent)
+		if err != nil {
+			log.Panic(err)
+		}
+		allMessages = append(allMessages, Message{ToolResult: toolResult})
+		internalAgentCall := provider.Run("", allMessages)
+		responseMessage = internalAgentCall.NewMessage
+		allMessages = append(allMessages, responseMessage)
+	}
+
 	return &AgentResult{
 		AllMessages:   allMessages,
 		NewMessage:    responseMessage,
@@ -248,15 +267,7 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 	}
 }
 
-func (provider *Anthropic) RegisterTool(name string, desctiption string, schema any) {
-	tool := AnthropicTool{
-		Name:        name,
-		Description: desctiption,
-		Parameters: Parameters{
-			Type:       "object",
-			Required:   []string{},
-			Properties: ConvertToProperties(schema),
-		},
-	}
-	provider.Tools = append(provider.Tools, tool)
+func (provider *Anthropic) RegisterTool(fn any, paramType any, desctiption string) error {
+	provider.AgentConfig.RegisterTool(fn, paramType, desctiption)
+	return nil
 }

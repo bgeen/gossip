@@ -1,8 +1,9 @@
-package providers
+package provider
 
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 )
 
@@ -18,28 +19,9 @@ func CheckModel(provider string, model string) bool {
 	return found
 }
 
-type Message struct { // or InputItem
-	Role       string      `json:"role,omitempty"` // developer | user | assistant
-	Text       string      `json:"text,omitempty"`
-	Type       string      `json:"type,omitempty"`
-	ToolIntent *ToolIntent `json:"tool_intent,omitempty"`
-	ToolResult *ToolResult `json:"tool_result,omitempty"`
-}
-
-type ToolIntent struct {
-	Id        string `json:"id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Arguments string `json:"arguments,omitempty"`
-}
-
-type ToolResult struct {
-	Id     string `json:"id,omitempty"`
-	Output string `json:"output,omitempty"`
-}
-
 type Agent interface {
 	Run(string, ...[]Message) *AgentResult
-	RegisterTool(string, string, any)
+	RegisterTool(any, any, string) error
 }
 
 type AgentConfig struct {
@@ -48,6 +30,7 @@ type AgentConfig struct {
 	SystemPrompt    string
 	ReasoningEffort string
 	Temperature     float32
+	ToolStore
 }
 
 type AgentResult struct {
@@ -57,6 +40,14 @@ type AgentResult struct {
 	ToolArguments string
 	ToolIntent    *ToolIntent
 	ToolResult    ToolResult
+}
+
+type Message struct { // or InputItem
+	Role       string      `json:"role,omitempty"` // developer | user | assistant
+	Text       string      `json:"text,omitempty"`
+	Type       string      `json:"type,omitempty"`
+	ToolIntent *ToolIntent `json:"tool_intent,omitempty"`
+	ToolResult *ToolResult `json:"tool_result,omitempty"`
 }
 
 type AgentOption func(*AgentConfig)
@@ -79,23 +70,25 @@ func WithTemperature(temperature float32) AgentOption {
 	}
 }
 
-func NewAgent(modelName string, opts ...AgentOption) (Agent, bool) {
+func NewAgent(modelName string, opts ...AgentOption) (Agent, error) {
 	provider, model, found := strings.Cut(modelName, ":")
 	if !found {
-		fmt.Println("seperator not found in model name")
-		return nil, false
+		return nil, fmt.Errorf("seperator not found in model name")
 	}
 	if !CheckModel(provider, model) {
-		fmt.Println("Model not available")
-		return nil, false
+		return nil, fmt.Errorf("model not available")
 	}
 	keyName := strings.ToUpper(provider) + "_API_KEY"
 	apiKey, keyFound := os.LookupEnv(keyName)
 	if !keyFound {
-		fmt.Println("api key not found")
-		return nil, false
+		return nil, fmt.Errorf("api key not found")
 	}
-	config := AgentConfig{ModelName: model, ApiKey: apiKey}
+	toolStore := ToolStore{
+		functions:    make(map[string]any),
+		paramTypes:   make(map[string]reflect.Type),
+		descriptions: make(map[string]string),
+	}
+	config := AgentConfig{ModelName: model, ApiKey: apiKey, ToolStore: toolStore}
 
 	for _, opt := range opts {
 		opt(&config)
@@ -103,12 +96,10 @@ func NewAgent(modelName string, opts ...AgentOption) (Agent, bool) {
 
 	switch provider {
 	case "anthropic":
-		return &Anthropic{config, nil}, true
+		return &Anthropic{config, nil}, nil
 	case "openai":
-		// return &Openai{config, nil}, true
-		return nil, false
+		return &Openai{config, nil}, nil
 	default:
-		fmt.Println("unknown provider!")
-		return nil, false
+		return nil, fmt.Errorf("unknown provider!")
 	}
 }
