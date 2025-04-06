@@ -18,6 +18,25 @@ func CheckModel(provider string, model string) bool {
 	return found
 }
 
+type Message struct { // or InputItem
+	Role       string      `json:"role,omitempty"` // developer | user | assistant
+	Text       string      `json:"text,omitempty"`
+	Type       string      `json:"type,omitempty"`
+	ToolIntent *ToolIntent `json:"tool_intent,omitempty"`
+	ToolResult *ToolResult `json:"tool_result,omitempty"`
+}
+
+type ToolIntent struct {
+	Id        string `json:"id,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+}
+
+type ToolResult struct {
+	Id     string `json:"id,omitempty"`
+	Output string `json:"output,omitempty"`
+}
+
 type Agent interface {
 	Run(string, ...[]Message) *AgentResult
 	RegisterTool(string, string, any)
@@ -32,8 +51,12 @@ type AgentConfig struct {
 }
 
 type AgentResult struct {
-	AllMessages []Message
-	NewMessage  Message
+	AllMessages   []Message
+	NewMessage    Message
+	Data          string
+	ToolArguments string
+	ToolIntent    *ToolIntent
+	ToolResult    ToolResult
 }
 
 type AgentOption func(*AgentConfig)
@@ -82,7 +105,8 @@ func NewAgent(modelName string, opts ...AgentOption) (Agent, bool) {
 	case "anthropic":
 		return &Anthropic{config, nil}, true
 	case "openai":
-		return &Openai{config, nil}, true
+		// return &Openai{config, nil}, true
+		return nil, false
 	default:
 		fmt.Println("unknown provider!")
 		return nil, false
