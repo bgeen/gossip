@@ -20,7 +20,7 @@ func CheckModel(provider string, model string) bool {
 }
 
 type Agent interface {
-	Run(string, ...[]Message) *AgentResult
+	Run(string, ...[]Message) (*AgentResult, error)
 	RegisterTool(any, any, string) error
 }
 

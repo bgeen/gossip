@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"reflect"
 	"time"
@@ -75,7 +74,7 @@ type AnthropicResponse struct {
 	Usage        AnthropicUsage     `json:"usage"`
 }
 
-func (provider Anthropic) FormatMessages(messages []Message) []AnthropicMessage {
+func (provider Anthropic) FormatMessages(messages []Message) ([]AnthropicMessage, error) {
 	var anthropicMessages []AnthropicMessage
 
 	for _, msg := range messages {
@@ -91,7 +90,7 @@ func (provider Anthropic) FormatMessages(messages []Message) []AnthropicMessage 
 				var input map[string]any
 				err := json.Unmarshal([]byte(msg.ToolIntent.Arguments), &input)
 				if err != nil {
-					log.Fatal("failed to unmarshal arguments string to map[string]any")
+					return nil, fmt.Errorf("(anthropic.go, FormatMessages) failed to unmarshal arguments string to map[string]any")
 				}
 				content.Input = input
 			}
@@ -112,15 +111,19 @@ func (provider Anthropic) FormatMessages(messages []Message) []AnthropicMessage 
 			Content: []AnthropicContent{content},
 		})
 	}
-	return anthropicMessages
+	return anthropicMessages, nil
 }
 
-func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *AgentResult {
+func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) (*AgentResult, error) {
 	fmt.Printf("[%s] Provider anthropic called\n", time.Now().Format(time.RFC3339))
 	apiKey := provider.ApiKey
 	var finalPrompt []AnthropicMessage
 	if len(messageHistory) > 0 {
-		finalPrompt = provider.FormatMessages(messageHistory[0])
+		fp, err := provider.FormatMessages(messageHistory[0])
+		if err != nil {
+			return nil, err
+		}
+		finalPrompt = fp
 	}
 
 	if prompt != "" {
@@ -173,13 +176,13 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 	// Convert request body to JSON
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Create HTTP request
 	req, err := http.NewRequest("POST", AnthropicEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Add headers
@@ -191,21 +194,21 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Parse JSON response
 	var response AnthropicResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	var allMessages []Message
@@ -230,7 +233,7 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 		case "tool_use":
 			argumentsString, err := json.Marshal(item.Input)
 			if err != nil {
-				log.Fatal("failed to convert arguments json object to string")
+				return nil, fmt.Errorf("failed to convert arguments json object to string")
 			}
 			intent := ToolIntent{
 				Id:        item.Id,
@@ -243,17 +246,20 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 			})
 			toolIntent = intent
 		default:
-			log.Fatal("Unexpected message type")
+			return nil, fmt.Errorf("Unexpected message type")
 		}
 	}
 
 	if toolIntent.Id != "" {
 		toolResult, err := provider.ExecuteToolIntent(toolIntent)
 		if err != nil {
-			log.Panic(err)
+			return nil, err
 		}
 		allMessages = append(allMessages, Message{ToolResult: toolResult})
-		internalAgentCall := provider.Run("", allMessages)
+		internalAgentCall, err := provider.Run("", allMessages)
+		if err != nil {
+			return nil, err
+		}
 		responseMessage = internalAgentCall.NewMessage
 		allMessages = append(allMessages, responseMessage)
 	}
@@ -264,7 +270,7 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) *Agent
 		ToolIntent:    &toolIntent,
 		Data:          responseMessage.Text,
 		ToolArguments: toolIntent.Arguments,
-	}
+	}, nil
 }
 
 func (provider *Anthropic) RegisterTool(fn any, paramType any, desctiption string) error {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"reflect"
 	"time"
@@ -115,7 +114,7 @@ func (provider Openai) FormatMessages(messages []Message) []OpenaiMessage {
 	return openaiMessages
 }
 
-func (provider Openai) Run(prompt string, messageHistory ...[]Message) *AgentResult {
+func (provider Openai) Run(prompt string, messageHistory ...[]Message) (*AgentResult, error) {
 	fmt.Printf("[%s] Provider openai called\n", time.Now().Format(time.RFC3339))
 	apiKey := provider.ApiKey
 
@@ -172,19 +171,18 @@ func (provider Openai) Run(prompt string, messageHistory ...[]Message) *AgentRes
 		reqBody.Tools = tools
 	}
 
-	// Convert request body to JSON
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		log.Panic(err)
+		return nil, err
 	}
 
 	// Create HTTP request
 	req, err := http.NewRequest("POST", OpenaiEndpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Panic(err)
+		return nil, err
 	}
 
-	// Add headers
+	// headers
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -192,21 +190,21 @@ func (provider Openai) Run(prompt string, messageHistory ...[]Message) *AgentRes
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Panic(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	// Parse JSON response
 	var response OpenaiResponse
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	var allMessages []Message
@@ -243,17 +241,20 @@ func (provider Openai) Run(prompt string, messageHistory ...[]Message) *AgentRes
 			})
 			toolIntent = intent
 		default:
-			log.Fatal("Unexpected message type")
+			return nil, fmt.Errorf("(openai.go, Run) unexpected message type")
 		}
 	}
 
 	if toolIntent.Id != "" {
 		toolResult, err := provider.ExecuteToolIntent(toolIntent)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 		allMessages = append(allMessages, Message{ToolResult: toolResult})
-		internalAgentCall := provider.Run("", allMessages)
+		internalAgentCall, err := provider.Run("", allMessages)
+		if err != nil {
+			return nil, err
+		}
 		responseMessage = internalAgentCall.NewMessage
 		allMessages = append(allMessages, responseMessage)
 	}
@@ -264,7 +265,7 @@ func (provider Openai) Run(prompt string, messageHistory ...[]Message) *AgentRes
 		ToolIntent:    &toolIntent,
 		Data:          responseMessage.Text,
 		ToolArguments: toolIntent.Arguments,
-	}
+	}, nil
 }
 
 func (provider *Openai) RegisterTool(fn any, paramType any, desctiption string) error {
