@@ -5,19 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"reflect"
-	"time"
 )
 
 const OpenaiEndpoint = "https://api.openai.com/v1/responses"
-
-var OpenaiModels map[string]bool = map[string]bool{
-	"o3-mini":     true,
-	"o1-mini":     true,
-	"gpt-4o-mini": true,
-	"gpt-4o":      true,
-}
 
 type Openai struct {
 	AgentConfig
@@ -115,7 +108,7 @@ func (provider Openai) FormatMessages(messages []Message) []OpenaiMessage {
 }
 
 func (provider Openai) Run(prompt string, messageHistory ...[]Message) (*AgentResult, error) {
-	fmt.Printf("[%s] Provider openai called\n", time.Now().Format(time.RFC3339))
+	log.Println("Provider openai called")
 	apiKey := provider.ApiKey
 
 	var requestInput []OpenaiMessage
@@ -207,39 +200,40 @@ func (provider Openai) Run(prompt string, messageHistory ...[]Message) (*AgentRe
 		return nil, err
 	}
 
-	var allMessages []Message
-	var responseMessage Message
+	var msgHistory []Message
+	var newMessages []Message
+	var finalText string
 	var toolIntent ToolIntent
 
 	if len(messageHistory) > 0 {
-		allMessages = append(allMessages, messageHistory[0]...)
+		msgHistory = messageHistory[0]
 	}
 	if prompt != "" {
-		allMessages = append(allMessages, Message{Role: "user", Text: prompt})
+		newMessages = append(newMessages, Message{Role: "user", Text: prompt})
 	}
 	for _, output := range response.Output {
 		switch output.Type {
 		case "message":
 			for _, content := range output.Content {
 				if content.Type == "output_text" {
-					responseMessage = Message{
+					responseMessage := Message{
 						Role: output.Role,
 						Text: content.Text,
 					}
-					allMessages = append(allMessages, responseMessage)
+					newMessages = append(newMessages, responseMessage)
+					finalText = content.Text
 				}
 			}
 		case "function_call":
-			intent := ToolIntent{
+			toolIntent = ToolIntent{
 				Id:        output.CallId,
 				Name:      output.Name,
 				Arguments: output.Arguments,
 			}
-			allMessages = append(allMessages, Message{
+			newMessages = append(newMessages, Message{
 				Type:       "tool_intent",
-				ToolIntent: &intent,
+				ToolIntent: &toolIntent,
 			})
-			toolIntent = intent
 		default:
 			return nil, fmt.Errorf("(openai.go, Run) unexpected message type")
 		}
@@ -250,20 +244,19 @@ func (provider Openai) Run(prompt string, messageHistory ...[]Message) (*AgentRe
 		if err != nil {
 			return nil, err
 		}
-		allMessages = append(allMessages, Message{ToolResult: toolResult})
-		internalAgentCall, err := provider.Run("", allMessages)
+		newMessages = append(newMessages, Message{ToolResult: toolResult})
+		internalAgentResult, err := provider.Run("", append(msgHistory, newMessages...))
 		if err != nil {
 			return nil, err
 		}
-		responseMessage = internalAgentCall.NewMessage
-		allMessages = append(allMessages, responseMessage)
+		newMessages = append(newMessages, internalAgentResult.NewMessages...)
 	}
 
 	return &AgentResult{
-		AllMessages:   allMessages,
-		NewMessage:    responseMessage,
+		AllMessages:   append(msgHistory, newMessages...),
+		NewMessages:   newMessages,
 		ToolIntent:    &toolIntent,
-		Data:          responseMessage.Text,
+		Text:          finalText,
 		ToolArguments: toolIntent.Arguments,
 	}, nil
 }

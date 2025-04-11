@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -23,14 +24,14 @@ type AgentConfig struct {
 
 type AgentResult struct {
 	AllMessages   []Message
-	NewMessage    Message
-	Data          string
+	NewMessages   []Message
+	Text          string
 	ToolArguments string
 	ToolIntent    *ToolIntent
 	ToolResult    ToolResult
 }
 
-type Message struct { // or InputItem
+type Message struct {
 	Role       string      `json:"role,omitempty"` // developer | user | assistant
 	Text       string      `json:"text,omitempty"`
 	Type       string      `json:"type,omitempty"`
@@ -59,12 +60,12 @@ func WithTemperature(temperature float32) AgentOption {
 }
 
 func NewAgent(modelName string, opts ...AgentOption) (Agent, error) {
+	if _, exists := AvailableModels[modelName]; !exists {
+		return nil, fmt.Errorf("model not available")
+	}
 	provider, model, found := strings.Cut(modelName, ":")
 	if !found {
 		return nil, fmt.Errorf("seperator not found in model name")
-	}
-	if !CheckModel(provider, model) {
-		return nil, fmt.Errorf("model not available")
 	}
 	keyName := strings.ToUpper(provider) + "_API_KEY"
 	apiKey, keyFound := os.LookupEnv(keyName)
@@ -94,9 +95,10 @@ func NewAgent(modelName string, opts ...AgentOption) (Agent, error) {
 	}
 }
 
-func CheckModel(provider string, model string) bool {
-	if actualProvider, exists := AvailableModels[model]; exists {
-		return actualProvider == provider
+func (result AgentResult) AllMessagesJson() []byte {
+	jsonData, err := json.MarshalIndent(result.AllMessages, "", "  ")
+	if err != nil {
+		return nil
 	}
-	return false
+	return jsonData
 }

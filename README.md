@@ -1,6 +1,9 @@
-# Call2Action
+# gossip
+---
 
-**Call2Action** is a lightweight, fast, and reliable Go module designed to interact with APIs from popular AI inference providers.
+<img src="./assets/mascot.png" alt="Gossip mascot" width="200" height="200">
+
+**gossip** is a lightweight, fast, and reliable Go module designed to interact with APIs from popular AI inference providers.
 
 Its goal is to be ergonomic for developers while maintaining speed and reliability.
 
@@ -35,7 +38,7 @@ package main
 import (
 	"fmt"
 
-	provider "github.com/bgeen/call2action/providers"
+	provider "go.bgeen.com/gossip"
 )
 
 func main() {
@@ -59,7 +62,7 @@ import (
 	"fmt"
 	"strings"
 
-	provider "github.com/bgeen/call2action/providers"
+	provider "go.bgeen.com/gossip"
 )
 
 func main1() {

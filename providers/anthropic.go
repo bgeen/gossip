@@ -5,17 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"reflect"
-	"time"
 )
 
 const AnthropicEndpoint = "https://api.anthropic.com/v1/messages"
-
-var AnthropicModels map[string]bool = map[string]bool{
-	"claude-3-5-sonnet-latest": true,
-	"claude-3-5-haiku-latest":  true,
-}
 
 type Anthropic struct {
 	AgentConfig
@@ -115,7 +110,7 @@ func (provider Anthropic) FormatMessages(messages []Message) ([]AnthropicMessage
 }
 
 func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) (*AgentResult, error) {
-	fmt.Printf("[%s] Provider anthropic called\n", time.Now().Format(time.RFC3339))
+	log.Println("Provider anthropic called")
 	apiKey := provider.ApiKey
 	var finalPrompt []AnthropicMessage
 	if len(messageHistory) > 0 {
@@ -211,40 +206,41 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) (*Agen
 		return nil, err
 	}
 
-	var allMessages []Message
-	var responseMessage Message
+	var msgHistory []Message
+	var newMessages []Message
+	var finalText string
 	var toolIntent ToolIntent
 
 	if len(messageHistory) > 0 {
-		allMessages = append(allMessages, messageHistory[0]...)
+		msgHistory = messageHistory[0]
 	}
 	if prompt != "" {
-		allMessages = append(allMessages, Message{Role: "user", Text: prompt})
+		newMessages = append(newMessages, Message{Role: "user", Text: prompt})
 	}
 
 	for _, item := range response.Content { // assuming there will be only one element in response.content list
 		switch item.Type {
 		case "text":
-			responseMessage = Message{
+			responseMessage := Message{
 				Role: response.Role,
 				Text: item.Text,
 			}
-			allMessages = append(allMessages, responseMessage)
+			newMessages = append(newMessages, responseMessage)
+			finalText = item.Text
 		case "tool_use":
 			argumentsString, err := json.Marshal(item.Input)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert arguments json object to string")
 			}
-			intent := ToolIntent{
+			toolIntent = ToolIntent{
 				Id:        item.Id,
 				Name:      item.Name,
 				Arguments: string(argumentsString),
 			}
-			allMessages = append(allMessages, Message{
+			newMessages = append(newMessages, Message{
 				Type:       "tool_intent",
-				ToolIntent: &intent,
+				ToolIntent: &toolIntent,
 			})
-			toolIntent = intent
 		default:
 			return nil, fmt.Errorf("Unexpected message type")
 		}
@@ -255,20 +251,19 @@ func (provider Anthropic) Run(prompt string, messageHistory ...[]Message) (*Agen
 		if err != nil {
 			return nil, err
 		}
-		allMessages = append(allMessages, Message{ToolResult: toolResult})
-		internalAgentCall, err := provider.Run("", allMessages)
+		newMessages = append(newMessages, Message{ToolResult: toolResult})
+		internalAgentResult, err := provider.Run("", append(msgHistory, newMessages...))
 		if err != nil {
 			return nil, err
 		}
-		responseMessage = internalAgentCall.NewMessage
-		allMessages = append(allMessages, responseMessage)
+		newMessages = append(newMessages, internalAgentResult.NewMessages...)
 	}
 
 	return &AgentResult{
-		AllMessages:   allMessages,
-		NewMessage:    responseMessage,
+		AllMessages:   append(msgHistory, newMessages...),
+		NewMessages:   newMessages,
 		ToolIntent:    &toolIntent,
-		Data:          responseMessage.Text,
+		Text:          finalText,
 		ToolArguments: toolIntent.Arguments,
 	}, nil
 }

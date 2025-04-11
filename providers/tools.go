@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-	"time"
 )
 
 type Property struct {
@@ -175,7 +174,7 @@ func (provider *AgentConfig) RegisterTool(fn any, paramType any, desctiption str
 func (provider *AgentConfig) ExecuteToolIntent(toolIntent ToolIntent) (*ToolResult, error) {
 	store := provider.ToolStore
 	fnName := toolIntent.Name
-	log.Printf("[%s] Tool called: %s\n", time.Now().Format(time.RFC3339), fnName)
+	log.Printf("Tool called: %s\n", fnName)
 	fn, exists := store.functions[fnName]
 	if !exists {
 		return nil, fmt.Errorf("function %s not found", fnName)

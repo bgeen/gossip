@@ -1,5 +1,3 @@
-module github.com/bgeen/call2action
+module go.bgeen.com/gossip
 
 go 1.22.3
-
-replace github.com/bgeen/call2action => ./

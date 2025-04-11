@@ -5,16 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"reflect"
-	"time"
 )
 
 const GroqEndpoint = "https://api.groq.com/openai/v1/chat/completions"
-
-var GroqModels map[string]bool = map[string]bool{
-	"llama-3.3-70b-versatile": true,
-}
 
 type Groq struct {
 	AgentConfig
@@ -110,7 +106,8 @@ func (provider Groq) FormatMessages(messages []Message) []GroqMessage {
 }
 
 func (provider Groq) Run(prompt string, messageHistory ...[]Message) (*AgentResult, error) {
-	fmt.Printf("[%s] Provider groq called\n", time.Now().Format(time.RFC3339))
+
+	log.Println("provider groq called")
 	apiKey := provider.ApiKey
 
 	var groqMessages []GroqMessage
@@ -167,6 +164,7 @@ func (provider Groq) Run(prompt string, messageHistory ...[]Message) (*AgentResu
 		}
 		reqBody.Tools = tools
 	}
+
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, err
@@ -206,61 +204,68 @@ func (provider Groq) Run(prompt string, messageHistory ...[]Message) (*AgentResu
 		return nil, err
 	}
 
-	var allMessages []Message
-	var responseMessage Message
+	var msgHistory []Message
+	var newMessages []Message
+	var finalText string
 	var toolIntent ToolIntent
 
 	if len(messageHistory) > 0 {
-		allMessages = append(allMessages, messageHistory[0]...)
+		msgHistory = messageHistory[0]
 	}
 	if prompt != "" {
-		allMessages = append(allMessages, Message{Role: "user", Text: prompt})
+		newMessages = append(newMessages, Message{Role: "user", Text: prompt})
 	}
 	for _, choice := range response.Choices {
 		msg := choice.Message
 
 		if msg.Content != "" {
-			responseMessage = Message{
+			responseMessage := Message{
 				Role: "assistant",
 				Text: msg.Content,
 			}
-			allMessages = append(allMessages, responseMessage)
+			newMessages = append(newMessages, responseMessage)
+			finalText = msg.Content
 		} else if len(msg.ToolCalls) > 0 {
 			toolCall := msg.ToolCalls[0]
-			intent := ToolIntent{
+			toolIntent = ToolIntent{
 				Id:        toolCall.Id,
 				Name:      toolCall.Function.Name,
 				Arguments: toolCall.Function.Arguments,
 			}
-			allMessages = append(allMessages, Message{
+			newMessages = append(newMessages, Message{
 				Type:       "tool_intent",
-				ToolIntent: &intent,
+				ToolIntent: &toolIntent,
 			})
-			toolIntent = intent
 		} else {
 			return nil, fmt.Errorf("(groq.go, Run) unexpected response")
 		}
 	}
 
 	if toolIntent.Id != "" {
+		tempAgentResult := &AgentResult{
+			AllMessages:   append(msgHistory, newMessages...),
+			NewMessages:   newMessages,
+			Text:          finalText,
+			ToolArguments: toolIntent.Arguments,
+			ToolIntent:    &toolIntent,
+		}
 		toolResult, err := provider.ExecuteToolIntent(toolIntent)
 		if err != nil {
-			return nil, err
+			return tempAgentResult, err
 		}
-		allMessages = append(allMessages, Message{ToolResult: toolResult})
-		internalAgentCall, err := provider.Run("", allMessages)
+		newMessages = append(newMessages, Message{ToolResult: toolResult})
+		internalAgentResult, err := provider.Run("", append(msgHistory, newMessages...))
 		if err != nil {
-			return nil, err
+			return tempAgentResult, err
 		}
-		responseMessage = internalAgentCall.NewMessage
-		allMessages = append(allMessages, responseMessage)
+		newMessages = append(newMessages, internalAgentResult.NewMessages...)
 	}
 
 	return &AgentResult{
-		AllMessages:   allMessages,
-		NewMessage:    responseMessage,
+		AllMessages:   append(msgHistory, newMessages...),
+		NewMessages:   newMessages,
+		Text:          finalText,
 		ToolIntent:    &toolIntent,
-		Data:          responseMessage.Text,
 		ToolArguments: toolIntent.Arguments,
 	}, nil
 }
