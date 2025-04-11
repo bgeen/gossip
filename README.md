@@ -1,10 +1,9 @@
 # gossip
 
----
-
 <p align="center" width="100%">
 <img src="./assets/mascot.png" alt="Gossip mascot" width="400" height="400">
 </p>
+
 
 **gossip** is a lightweight, fast, and reliable Go module designed to interact with APIs from popular AI inference providers.
 
