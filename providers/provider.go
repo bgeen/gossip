@@ -7,18 +7,6 @@ import (
 	"strings"
 )
 
-func CheckModel(provider string, model string) bool {
-	var found bool
-	if provider == "anthropic" {
-		found = AnthropicModels[model]
-	}
-
-	if provider == "openai" {
-		found = OpenaiModels[model]
-	}
-	return found
-}
-
 type Agent interface {
 	Run(string, ...[]Message) (*AgentResult, error)
 	RegisterTool(any, any, string) error
@@ -99,7 +87,16 @@ func NewAgent(modelName string, opts ...AgentOption) (Agent, error) {
 		return &Anthropic{config, nil}, nil
 	case "openai":
 		return &Openai{config, nil}, nil
+	case "groq":
+		return &Groq{config, nil}, nil
 	default:
 		return nil, fmt.Errorf("unknown provider!")
 	}
+}
+
+func CheckModel(provider string, model string) bool {
+	if actualProvider, exists := AvailableModels[model]; exists {
+		return actualProvider == provider
+	}
+	return false
 }
