@@ -5,13 +5,15 @@
 </p>
 
 
-**gossip** is a lightweight, fast, and reliable Go module designed to interact with APIs from popular AI inference providers.
+**Gossip** is a lightweight, fast, and reliable Go module designed to interact with APIs from popular AI inference providers.
 
 Its goal is to be ergonomic for developers while maintaining speed and reliability.
 
+---
+
 > ⚠️ Note: This module intentionally focuses on the most essential and commonly used features from each provider, rather than offering a full abstraction of every available API capability.
 
----
+
 
 ## ✅ Supported Providers & Features
 
