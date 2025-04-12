@@ -5,15 +5,12 @@
 </p>
 
 
-**Gossip** is a lightweight, fast, and reliable Go module designed to interact with APIs from popular AI inference providers.
+**Gossip** stands for "Go Simple Standards for Inference Providers". It is a lightweight, fast, and reliable Go module designed to interact with APIs from popular AI inference providers.
 
 Its goal is to be ergonomic for developers while maintaining speed and reliability.
 
----
 
-> ⚠️ Note: This module intentionally focuses on the most essential and commonly used features from each provider, rather than offering a full abstraction of every available API capability.
-
-
+> ⚠️ Note: This module focuses on the most essential and commonly used features from each provider, rather than offering a full abstraction of every available API capability.
 
 ## ✅ Supported Providers & Features
 
@@ -21,16 +18,20 @@ Its goal is to be ergonomic for developers while maintaining speed and reliabili
 - ✅ Chat Completion
 - ✅ Function Calling
 - 🔜 Parallel Function Calling *(Coming Soon)*
+- 🔜 Prompt Caching *(Coming Soon)*
 
 ### Anthropic
 - ✅ Chat Completion
 - ✅ Function Calling
 - 🔜 Parallel Function Calling *(Coming Soon)*
+- 🔜 Prompt Caching *(Coming Soon)*
 
 ### Groq
-- 🔜 Support Coming Soon
+- ✅ Chat Completion
+- ✅ Function Calling
+- 🔜 Parallel Function Calling *(Coming Soon)*
+- 🔜 Prompt Caching *(Coming Soon)*
 
----
 
 # Usage
 
@@ -42,7 +43,7 @@ package main
 import (
 	"fmt"
 
-	provider "go.bgeen.com/gossip"
+	provider "go.bgeen.com/gossip/providers"
 )
 
 func main() {
@@ -66,7 +67,7 @@ import (
 	"fmt"
 	"strings"
 
-	provider "go.bgeen.com/gossip"
+	provider "go.bgeen.com/gossip/providers"
 )
 
 func main1() {
